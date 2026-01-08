@@ -1,0 +1,73 @@
+import { initializeApp } from 'firebase/app';
+import { getAuth, RecaptchaVerifier } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
+import toast from 'react-hot-toast';
+
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
+// Initialize Firebase Authentication and get a reference to the service
+export const auth = getAuth(app);
+
+// Initialize Cloud Firestore and get a reference to the service
+export const db = getFirestore(app);
+
+// Initialize Cloud Functions
+export const functions = getFunctions(app);
+
+// Admin UID for authentication
+export const ADMIN_UID = import.meta.env.VITE_ADMIN_UID;
+
+// Helper function to check if current user is admin
+export const isAdmin = () => {
+  const currentUser = auth.currentUser;
+  return currentUser?.uid === ADMIN_UID;
+};
+
+// Helper function to ensure user is authenticated
+export const ensureAuthenticated = () => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('User not authenticated');
+  }
+  return currentUser;
+};
+
+// Helper function to setup reCAPTCHA verifier
+export const setupRecaptcha = (buttonId: string) => {
+  try {
+    if (!window.recaptchaVerifier) {
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, buttonId, {
+        size: 'invisible',
+        callback: () => {
+          // reCAPTCHA solved
+        },
+        'expired-callback': () => {
+          // Reset the reCAPTCHA
+          window.recaptchaVerifier = null;
+          toast.error('reCAPTCHA expired. Please try again.');
+        }
+      });
+    }
+    return window.recaptchaVerifier;
+  } catch (error) {
+    console.error('Error setting up reCAPTCHA:', error);
+    throw error;
+  }
+};
+
+declare global {
+  interface Window {
+    recaptchaVerifier: any;
+  }
+}

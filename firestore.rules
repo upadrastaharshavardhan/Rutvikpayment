@@ -1,0 +1,172 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return request.auth != null && request.auth.uid == "EyUDG7OV2lSMGStOZrGgT8C0BDI2";
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isValidPhoneNumber(phoneNumber) {
+      return phoneNumber.matches('^\\+?[\\d\\s-]+$');
+    }
+
+    function isValidStatus(status) {
+      return status in ['Available', 'Away', 'Out of Work'];
+    }
+
+    // User Profiles
+    match /registerformData/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(userId) &&
+        request.resource.data.keys().hasOnly(['fullName', 'email', 'city', 'mobileno', 'country', 'createdAt']) &&
+        request.resource.data.fullName is string &&
+        request.resource.data.email is string &&
+        request.resource.data.city is string &&
+        request.resource.data.mobileno is string &&
+        request.resource.data.country is string &&
+        request.resource.data.createdAt is timestamp;
+
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Online Pooja Bookings
+    match /bookings/{bookingId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (resource.data.userId == request.auth.uid && resource.data.status == 'pending')
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Offline Rutvik Service Bookings
+    match /offlinebookings/{bookingId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly(['serviceType', 'date', 'time', 'city', 'fullAddress', 'preferredPurohit', 'specialRequirements', 'userId', 'timestamp']) &&
+        request.resource.data.serviceType is string &&
+        request.resource.data.date.matches('^(0[1-9]|[12][0-9]|3[01])-(0[1-9]|1[0-2])-[0-9]{4}$') &&
+        request.resource.data.time.matches('^([01][0-9]|2[0-3]):([0-5][0-9])$') &&
+        request.resource.data.city is string &&
+        request.resource.data.fullAddress is string &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.timestamp is timestamp;
+
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (resource.data.userId == request.auth.uid && resource.data.status == 'pending')
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Custom Pooja Requests
+    match /customRequests/{requestId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (resource.data.userId == request.auth.uid && resource.data.status == 'pending')
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Email notifications
+    match /mail/{mailId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Rutviks Registration Data
+    match /rutviksregisterdata/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+
+      allow update: if isAuthenticated() &&
+        isOwner(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'primaryContact', 'alternativeContact']) &&
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
+          isValidStatus(request.resource.data.status)
+        ) &&
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['primaryContact']) ||
+          isValidPhoneNumber(request.resource.data.primaryContact)
+        ) &&
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['alternativeContact']) ||
+          request.resource.data.alternativeContact == '' ||
+          isValidPhoneNumber(request.resource.data.alternativeContact)
+        );
+
+      allow create, delete: if false;
+
+      match /assignments/{assignmentId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if false;
+      }
+    }
+
+    // Registration Rules for Rutviks
+    match /rutviksregisterdata/{registrationId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.email is string &&
+        request.resource.data.email.matches('^[^@]+@[^@]+\\.[^@]+$') &&
+        request.resource.data.fullName is string &&
+        request.resource.data.fullName.size() > 0 &&
+        request.resource.data.contactNumber is string &&
+        request.resource.data.contactNumber.size() > 0 &&
+        request.resource.data.city is string &&
+        request.resource.data.city.size() > 0 &&
+        request.resource.data.experience is string &&
+        request.resource.data.shakha is string &&
+        request.resource.data.gotram is string &&
+        request.resource.data.education is string &&
+        request.resource.data.profession is string &&
+        request.resource.data.role in ['purohit', 'rutvik', 'pandit', 'astrologer'] &&
+        request.resource.data.address is string &&
+        request.resource.data.about is string &&
+        (
+          (!request.resource.data.keys().hasAny(['aadharUrl']) || request.resource.data.aadharUrl is string) &&
+          (!request.resource.data.keys().hasAny(['photoUrl']) || request.resource.data.photoUrl is string)
+        ) &&
+        request.resource.data.timestamp is timestamp;
+
+      allow read, update, delete: if isAuthenticated() && isOwner(request.auth.uid);
+    }
+
+    // Default deny rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // QR Payments
+    match /qr_payments/{paymentId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly(['bookingId', 'bankAccountId', 'payerName', 'payerPhone', 'utrNumber', 'amount', 'proofUrl', 'status', 'createdAt', 'updatedAt']) &&
+        request.resource.data.status == 'pending';
+      
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Bank Accounts
+    match /bank_accounts/{accountId} {
+      allow read: if isAuthenticated() && resource.data.isActive == true;
+      allow write: if isAdmin();
+    }
+  }
+}
